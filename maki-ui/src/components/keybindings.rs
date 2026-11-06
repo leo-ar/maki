@@ -92,6 +92,13 @@ pub mod key {
         modifiers: KeyModifiers::ALT,
         label: "Alt+O",
     };
+    pub const EDIT_INPUT_DETACHED: Bind = Bind {
+        code: KeyCode::Char('O'),
+        modifiers: KeyModifiers::from_bits_truncate(
+            KeyModifiers::ALT.bits() | KeyModifiers::SHIFT.bits(),
+        ),
+        label: "Alt+Shift+O",
+    };
     pub const UNDO: Bind = Bind {
         code: KeyCode::Char('z'),
         modifiers: KeyModifiers::ALT,
@@ -326,6 +333,11 @@ pub const KEYBINDS: &[Keybind] = &[
     single(
         key::EDIT_INPUT.label,
         "Edit input in external editor",
+        Ctx::Editing,
+    ),
+    single(
+        key::EDIT_INPUT_DETACHED.label,
+        "Edit input in external editor, UI stays up",
         Ctx::Editing,
     ),
     single(

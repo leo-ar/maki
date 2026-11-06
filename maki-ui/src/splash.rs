@@ -44,6 +44,11 @@ const TIPS: &[Tip] = &[
         "to write your prompt in $EDITOR",
         None,
     ),
+    (
+        key::EDIT_INPUT_DETACHED.label,
+        "to write your prompt in $EDITOR without hiding the UI",
+        None,
+    ),
     ("Tab", "to toggle plan mode", None),
     ("Esc Esc", "to rewind to an earlier prompt", None),
     ("!cmd", "to run a shell command and share its output", None),

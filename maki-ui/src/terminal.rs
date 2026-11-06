@@ -1,6 +1,6 @@
 use shell_words::split;
 use std::io::{Write, stdout};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -581,19 +581,26 @@ pub(crate) fn edit_temp_content(
     std::fs::read_to_string(tmp.path()).map_err(|e| format!("Failed to read edited content: {e}"))
 }
 
-pub(crate) fn open_in_editor(
-    path: &Path,
-    terminal: &mut ratatui::DefaultTerminal,
-) -> Result<i32, String> {
+fn resolve_editor() -> Result<(String, Vec<String>), String> {
     let editor = std::env::var("VISUAL")
         .or_else(|_| std::env::var("EDITOR"))
         .map_err(|_| "Set $VISUAL or $EDITOR to open files".to_string())?;
 
-    let args = split(&editor).map_err(|e| format!("Failed to parse $VISUAL or $EDITOR: {e}"))?;
+    let args =
+        split(&editor).map_err(|e| format!("Failed to parse $VISUAL or $EDITOR: {e}"))?;
 
     if args.is_empty() {
         return Err("Empty $VISUAL or $EDITOR".to_string());
     }
+
+    Ok((editor, args))
+}
+
+pub(crate) fn open_in_editor(
+    path: &Path,
+    terminal: &mut ratatui::DefaultTerminal,
+) -> Result<i32, String> {
+    let (editor, args) = resolve_editor()?;
 
     teardown();
 
@@ -613,6 +620,44 @@ pub(crate) fn open_in_editor(
             "Failed to open {editor}: {e} - set $VISUAL or $EDITOR"
         )),
     }
+}
+
+/// Spawns the editor and lets it run beside the UI. `on_exit` fires when the
+/// editor process exits, which is what the caller reads the file back for.
+pub(crate) fn open_in_editor_detached(
+    content: &str,
+    on_exit: impl FnOnce() + Send + 'static,
+) -> Result<PathBuf, String> {
+    let tmp = tempfile::Builder::new()
+        .prefix("maki-input-")
+        .suffix(".md")
+        .tempfile()
+        .map_err(|e| format!("Failed to create temp file: {e}"))?;
+
+    std::fs::write(tmp.path(), content).map_err(|e| format!("Failed to write temp file: {e}"))?;
+    // `into_temp_path` keeps the file; dropping a `NamedTempFile` would delete it.
+    let path = tmp.into_temp_path().to_path_buf();
+
+    let (editor, args) = resolve_editor()?;
+    let child = std::process::Command::new(&args[0])
+        .args(&args[1..])
+        .arg(&path)
+        // The editor runs beside the UI, so it must never touch maki's tty.
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to open {editor}: {e} - set $VISUAL or $EDITOR"))?;
+
+    // The reaper is what makes "the editor exited" an event instead of a
+    // question; it also keeps the child from becoming a zombie.
+    std::thread::spawn(move || {
+        let mut child = child;
+        let _ = child.wait();
+        on_exit();
+    });
+
+    Ok(path)
 }
 
 pub(crate) fn copy_to_clipboard(text: &str) -> Result<(), String> {

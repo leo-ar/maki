@@ -42,6 +42,7 @@ On macOS, some bindings use Option or Fn keys instead (run `/help` for exact key
 | `Ctrl+Q` | Pop queue |
 | `Esc Esc` | Rewind |
 | `Alt+O` | Edit input in external editor |
+| `Alt+Shift+O` | Edit input in external editor, UI stays up |
 | `Ctrl+V` | Paste clipboard image or text |
 | `Alt+Z` | Undo typing / paste |
 

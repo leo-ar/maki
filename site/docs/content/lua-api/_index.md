@@ -7977,6 +7977,7 @@ key:
 | `"plan_toggle"` | Opens or closes the plan form | no plan is ready |
 | `"plan_editor"` | Opens the plan in your editor | there is no plan |
 | `"edit_input"` | Opens the chat input in your editor | |
+| `"edit_input_detached"` | Opens the chat input in your editor without hiding the UI; the edit lands when the editor closes | |
 | `"pop_queue"` | Removes the first queued message | |
 | `"prev_chat"`, `"next_chat"` | Shows the previous or next chat, with its own draft | |
 | `"input_raw"` | Switches the input between drawing what plugins conceal and showing the text under it, which is what gets sent | |

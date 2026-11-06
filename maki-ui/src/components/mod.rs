@@ -320,6 +320,9 @@ pub enum Action {
     ToggleMcp(String, bool),
     OpenEditor(PathBuf),
     EditInputInEditor,
+    /// Open the input in `$VISUAL`/`$EDITOR` without suspending the UI; the
+    /// edited file syncs back when the editor process exits.
+    EditInputDetached,
     Btw(String),
     PreparePack(PackCommand),
     Suspend,

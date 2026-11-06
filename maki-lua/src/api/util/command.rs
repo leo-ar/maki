@@ -721,6 +721,9 @@ pub enum BuiltinAction {
     PlanToggle,
     PlanEditor,
     EditInput,
+    /// Opens the chat input in `$VISUAL`/`$EDITOR` without suspending the UI;
+    /// the edited file syncs back when the editor process exits.
+    EditInputDetached,
     PopQueue,
     PrevChat,
     NextChat,
@@ -760,6 +763,7 @@ impl BuiltinAction {
             | Self::PlanToggle
             | Self::PlanEditor
             | Self::EditInput
+            | Self::EditInputDetached
             | Self::PrevChat
             | Self::NextChat
             | Self::ModelPicker

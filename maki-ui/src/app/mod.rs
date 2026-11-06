@@ -506,6 +506,17 @@ struct ExitOnDone {
     background_wait: Option<Duration>,
 }
 
+/// A detached `$VISUAL`/`$EDITOR` round in flight: the input went out to
+/// `path` and the editor process is still running. When it exits, the file
+/// syncs back into the input only while the buffer is still at
+/// `baseline_version`; a keystroke in the meantime means the user took over
+/// the input and the draft goes.
+pub(crate) struct DetachedDraft {
+    pub(crate) id: u64,
+    pub(crate) path: PathBuf,
+    pub(crate) baseline_version: u64,
+}
+
 pub struct App {
     pub(super) chats: Vec<Chat>,
     pub(super) active_chat: usize,
@@ -515,6 +526,8 @@ pub struct App {
     /// would bring it back, so we drop them.
     pub(super) deleted_tasks: HashSet<String>,
     pub(crate) input_box: InputBox,
+    /// A detached `$VISUAL`/`$EDITOR` round in flight, if any.
+    pub(crate) detached_draft: Option<DetachedDraft>,
     pub(super) command_palette: CommandPalette,
     pub(super) theme_picker: ThemePicker,
     pub(super) model_picker: ModelPicker,
@@ -665,6 +678,7 @@ impl App {
             chat_index: HashMap::new(),
             deleted_tasks: HashSet::new(),
             input_box,
+            detached_draft: None,
             command_palette: CommandPalette::new(
                 custom_commands,
                 mcp_reader.clone(),
@@ -1775,6 +1789,7 @@ impl App {
                 };
             }
             BuiltinAction::EditInput => return (true, vec![Action::EditInputInEditor]),
+            BuiltinAction::EditInputDetached => return (true, vec![Action::EditInputDetached]),
             BuiltinAction::PopQueue => {
                 self.pop_active_queue();
                 true
@@ -2160,6 +2175,15 @@ impl App {
         }
         if key::EDIT_INPUT.matches(key) {
             return self.run_builtin(BuiltinAction::EditInput);
+        }
+        // Legacy terminals report Alt+Shift+O as 'O' + ALT without a shift
+        // bit; kitty-protocol ones add it. Both are this key, and neither can
+        // collide with Alt+O, which arrives lowercase.
+        if key::EDIT_INPUT_DETACHED.code == key.code
+            && key.modifiers.intersects(KeyModifiers::ALT)
+            && !key.modifiers.intersects(KeyModifiers::CONTROL)
+        {
+            return self.run_builtin(BuiltinAction::EditInputDetached);
         }
         if key::MODEL_PICKER.matches(key) {
             return self.run_builtin(BuiltinAction::ModelPicker);

@@ -6073,6 +6073,24 @@ fn alt_o_opens_editor_for_input() {
     assert!(matches!(&actions[..], [Action::EditInputInEditor]));
 }
 
+#[test_case(KeyModifiers::ALT | KeyModifiers::SHIFT ; "kitty_reports_the_shift_bit")]
+#[test_case(KeyModifiers::ALT ; "legacy_terminals_omit_the_shift_bit")]
+fn alt_shift_o_opens_detached_editor(modifiers: KeyModifiers) {
+    let mut app = test_app();
+    app.input_box.buffer.insert_text("hello");
+    let actions = app.update(Msg::Key(KeyEvent::new(KeyCode::Char('O'), modifiers)));
+    assert!(matches!(&actions[..], [Action::EditInputDetached]));
+}
+
+#[test]
+fn alt_shift_ctrl_o_does_not_open_detached_editor() {
+    let mut app = test_app();
+    app.input_box.buffer.insert_text("hello");
+    let key = KeyEvent::new(KeyCode::Char('O'), KeyModifiers::ALT | KeyModifiers::CONTROL);
+    let actions = app.update(Msg::Key(key));
+    assert!(!actions.iter().any(|a| matches!(a, Action::EditInputDetached)));
+}
+
 #[test]
 fn btw_empty_flashes_error() {
     let mut app = test_app();

@@ -95,6 +95,8 @@ const FORKED_MSG: &str = "Forked, {key} to switch back";
 /// A `/reload` cannot ask the terminal: its input reader owns the tty.
 const RESTART_FOR_BACKGROUND: &str =
     "ui.theme: restart Maki to detect the terminal background, using dark until then";
+const DETACHED_DRAFT_DROPPED: &str = "Detached edit dropped: you edited the input meanwhile";
+const DETACHED_DRAFT_READ_FAILED: &str = "Detached edit lost: could not read the editor's file";
 
 /// Tabs carry their in-memory sessions so `/reload` reopens them without a
 /// disk round-trip; `session_has_content` tells which ones were saved.
@@ -563,6 +565,11 @@ pub(crate) struct EventLoop<'t> {
     models_fetched: Arc<Notify>,
     ui_action_rx: UnboundedReceiver<UiAction>,
     ui_waker: UiWaker,
+    editor_exit_rx: UnboundedReceiver<EditorExit>,
+    editor_exit_tx: UnboundedSender<EditorExit>,
+    /// Draft ids hand out monotonically, so a late exit event names at most
+    /// one draft and an ignored one cannot resurrect.
+    next_detached_id: u64,
     /// One package command at a time. The work runs as its own task, so a
     /// second `/packupdate` would otherwise race the first over the same clones
     /// and locks.
@@ -587,6 +594,13 @@ enum Wake {
     Warn(String),
     Pack(Box<PackPreparation>),
     ModelsDiscovered,
+    EditorExited(EditorExit),
+}
+
+/// A detached `$VISUAL`/`$EDITOR` process has exited; `id` names the draft
+/// it belongs to. The file path lives in the draft itself.
+struct EditorExit {
+    id: u64,
 }
 
 /// A value from the channel, or never, once it is closed: a closed channel
@@ -830,6 +844,8 @@ impl<'t> EventLoop<'t> {
             app.open_alert(alert);
         }
 
+        let (editor_exit_tx, editor_exit_rx) = unbounded_channel::<EditorExit>();
+
         Ok(Self {
             terminal,
             sessions: runtimes,
@@ -847,6 +863,9 @@ impl<'t> EventLoop<'t> {
             models_fetched: bg.models_fetched,
             ui_action_rx,
             ui_waker,
+            editor_exit_tx,
+            editor_exit_rx,
+            next_detached_id: 1,
             pack: None,
             _model_fetch_task: bg.task,
         })
@@ -973,6 +992,7 @@ impl<'t> EventLoop<'t> {
             Some(warning) = self.warn_rx.recv() => Wake::Warn(warning),
             preparation = pack_done(&mut self.pack) => Wake::Pack(Box::new(preparation)),
             () = self.models_fetched.notified() => Wake::ModelsDiscovered,
+            exited = next_or_pending(&mut self.editor_exit_rx) => Wake::EditorExited(exited),
             wake = session_wake(&mut self.sessions) => wake,
         }
     }
@@ -988,6 +1008,7 @@ impl<'t> EventLoop<'t> {
             Wake::Warn(warning) => self.focused_app().flash(warning),
             Wake::Pack(preparation) => self.finish_pack(*preparation),
             Wake::ModelsDiscovered => self.rebuild_models(),
+            Wake::EditorExited(exit) => self.handle_editor_exit(exit),
         }
         Ok(())
     }
@@ -1259,6 +1280,34 @@ impl<'t> EventLoop<'t> {
                 self.sessions[idx].app.flash(e);
                 -1
             }
+        }
+    }
+
+    /// A detached editor process has exited. The edited file syncs back into
+    /// the input only while the buffer is still at the version the draft left;
+    /// any keystroke in the meantime means the user took over the input, so
+    /// the draft goes with a note.
+    fn handle_editor_exit(&mut self, exit: EditorExit) {
+        let Some(rt) = self
+            .sessions
+            .iter_mut()
+            .find(|rt| rt.app.detached_draft.as_ref().is_some_and(|d| d.id == exit.id))
+        else {
+            return;
+        };
+        let Some(draft) = rt.app.detached_draft.take() else {
+            return;
+        };
+        let edited = std::fs::read_to_string(&draft.path);
+        let _ = std::fs::remove_file(&draft.path);
+        let untouched = rt.app.input_box.buffer.version() == draft.baseline_version;
+        match (edited, untouched) {
+            (Ok(edited), true) if edited != rt.app.input_box.buffer.value() => {
+                rt.app.input_box.rewrite_input(&edited);
+            }
+            (_, false) => rt.app.flash(DETACHED_DRAFT_DROPPED.into()),
+            (Err(_), true) => rt.app.flash(DETACHED_DRAFT_READ_FAILED.into()),
+            _ => {}
         }
     }
 
@@ -2123,6 +2172,31 @@ impl<'t> EventLoop<'t> {
                     Ok(edited) if edited == current_text => {}
                     Ok(edited) => self.sessions[idx].app.input_box.rewrite_input(&edited),
                     Err(e) => self.sessions[idx].app.flash(e),
+                }
+            }
+            Action::EditInputDetached => {
+                let id = self.next_detached_id;
+                self.next_detached_id = id.wrapping_add(1);
+                let app = &mut self.sessions[idx].app;
+                // A still-running editor loses its draft; its late exit event
+                // then ignores the id and its file is already gone.
+                if let Some(old) = app.detached_draft.take() {
+                    let _ = std::fs::remove_file(&old.path);
+                }
+                let text = app.input_box.buffer.value();
+                let tx = self.editor_exit_tx.clone();
+                let result = terminal::open_in_editor_detached(text, move || {
+                    let _ = tx.send(EditorExit { id });
+                });
+                match result {
+                    Ok(path) => {
+                        app.detached_draft = Some(crate::app::DetachedDraft {
+                            id,
+                            path,
+                            baseline_version: app.input_box.buffer.version(),
+                        });
+                    }
+                    Err(e) => app.flash(e),
                 }
             }
             Action::Btw(question) => {
