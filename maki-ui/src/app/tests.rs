@@ -6091,6 +6091,59 @@ fn alt_shift_ctrl_o_does_not_open_detached_editor() {
     assert!(!actions.iter().any(|a| matches!(a, Action::EditInputDetached)));
 }
 
+fn arm_detached_draft(app: &mut App) {
+    app.detached_draft = Some(DetachedDraft {
+        id: 1,
+        path: PathBuf::from("/tmp/maki-input-draft.md"),
+        baseline_version: app.input_box.buffer.version(),
+    });
+}
+
+#[test]
+fn draft_freezes_typing_and_submit() {
+    let mut app = test_app();
+    app.input_box.buffer.insert_text("hello");
+    arm_detached_draft(&mut app);
+
+    let actions = app.update(Msg::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)));
+    assert!(actions.is_empty());
+    assert_eq!(app.input_box.buffer.value(), "hello");
+
+    let actions = app.update(Msg::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)));
+    assert!(actions.is_empty());
+    assert_eq!(app.input_box.buffer.value(), "hello");
+}
+
+#[test]
+fn draft_freezes_paste() {
+    let mut app = test_app();
+    app.input_box.buffer.insert_text("hello");
+    arm_detached_draft(&mut app);
+    app.update(Msg::Paste("pasted".into()));
+    assert_eq!(app.input_box.buffer.value(), "hello");
+}
+
+#[test]
+fn draft_keeps_esc_alive() {
+    let mut app = test_app();
+    arm_detached_draft(&mut app);
+    let actions = app.update(Msg::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+    assert!(actions.is_empty());
+    assert_eq!(app.status_bar.flash_text().unwrap(), FLASH_REWIND);
+}
+
+#[test]
+fn draft_blocks_opening_another_editor() {
+    let mut app = test_app();
+    app.input_box.buffer.insert_text("hello");
+    arm_detached_draft(&mut app);
+    let key = KeyEvent::new(KeyCode::Char('O'), KeyModifiers::ALT | KeyModifiers::SHIFT);
+    let actions = app.update(Msg::Key(key));
+    assert!(actions
+        .iter()
+        .all(|a| !matches!(a, Action::EditInputDetached | Action::EditInputInEditor)));
+}
+
 #[test]
 fn btw_empty_flashes_error() {
     let mut app = test_app();

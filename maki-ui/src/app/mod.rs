@@ -2148,6 +2148,18 @@ impl App {
     /// {mode} is the one the key was pressed in. A fallback must not type in
     /// insert mode a key a plugin matched in normal mode.
     fn handle_chat_key(&mut self, key: KeyEvent, sight: Sight, mode: InputMode) -> Vec<Action> {
+        // A detached $EDITOR holds the input, so the box is frozen: nothing
+        // mutates it, but Esc and the bash toggle still work. Scrolling is
+        // answered upstream (mouse in the loop, page keys in
+        // `handle_builtin_key`), so read-only-but-scrollable falls out.
+        if self.detached_draft.is_some()
+            && !(
+                key.code == KeyCode::Esc
+                    || (key.code == KeyCode::Tab && !self.is_bash_input())
+            )
+        {
+            return vec![];
+        }
         if !self.chat_accepts_input() {
             return match key.code {
                 KeyCode::Tab if !self.is_bash_input() => self.toggle_mode(),
@@ -2774,9 +2786,14 @@ impl App {
             KeyboardOwner::McpPicker => self.mcp_picker.handle_paste(text),
             KeyboardOwner::Chat => {
                 let pressed = Pressed::Paste(text.to_owned());
-                if !self.dispatch_on_screen_windows(&pressed, turn)
-                    && !self.dispatch_binding(None, &pressed, turn)
-                {
+                if self.dispatch_on_screen_windows(&pressed, turn) {
+                    return;
+                }
+                // A focused $EDITOR froze the chat input, paste included.
+                if self.detached_draft.is_some() {
+                    return;
+                }
+                if !self.dispatch_binding(None, &pressed, turn) {
                     self.builtin_paste(text);
                 }
             }
