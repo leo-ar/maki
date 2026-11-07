@@ -622,12 +622,9 @@ pub(crate) fn open_in_editor(
     }
 }
 
-/// Spawns the editor and lets it run beside the UI. `on_exit` fires when the
-/// editor process exits, which is what the caller reads the file back for.
-pub(crate) fn open_in_editor_detached(
-    content: &str,
-    on_exit: impl FnOnce() + Send + 'static,
-) -> Result<PathBuf, String> {
+/// Writes `content` to a temp file that outlives this function: the caller
+/// owns the path and removes it once the editor is done. Returns the path.
+fn write_kept_temp_file(content: &str) -> Result<PathBuf, String> {
     let tmp = tempfile::Builder::new()
         .prefix("maki-input-")
         .suffix(".md")
@@ -635,8 +632,20 @@ pub(crate) fn open_in_editor_detached(
         .map_err(|e| format!("Failed to create temp file: {e}"))?;
 
     std::fs::write(tmp.path(), content).map_err(|e| format!("Failed to write temp file: {e}"))?;
-    // `into_temp_path` keeps the file; dropping a `NamedTempFile` would delete it.
-    let path = tmp.into_temp_path().to_path_buf();
+    // `TempPath` deletes the file on drop; `keep` disarms that so the editor
+    // (and the later read-back) find the file still there.
+    tmp.into_temp_path()
+        .keep()
+        .map_err(|e| format!("Failed to keep temp file: {}", e.error))
+}
+
+/// Spawns the editor and lets it run beside the UI. `on_exit` fires when the
+/// editor process exits, which is what the caller reads the file back for.
+pub(crate) fn open_in_editor_detached(
+    content: &str,
+    on_exit: impl FnOnce() + Send + 'static,
+) -> Result<PathBuf, String> {
+    let path = write_kept_temp_file(content)?;
 
     let (editor, args) = resolve_editor()?;
     let child = std::process::Command::new(&args[0])
@@ -683,6 +692,17 @@ mod tests {
             term_program,
             ..TerminalEnvironment::default()
         }
+    }
+
+    #[test]
+    fn kept_temp_file_survives_on_disk() {
+        let path = write_kept_temp_file("hello emacs").expect("temp file");
+        assert!(path.is_file(), "temp file must persist for the editor");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read back"),
+            "hello emacs"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 
     // Simulates DCS-passthrough parsing: `ESC ESC` becomes one ESC,
