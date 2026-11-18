@@ -442,6 +442,7 @@ impl App {
                 show_global: self.chats.len() > 1,
             },
             auto_scroll: chat.auto_scroll(),
+            editor_open: self.detached_draft.is_some(),
             chat_name,
             thinking_label: opts.thinking.status_label(),
             fast: opts.fast,

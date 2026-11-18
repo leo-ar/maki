@@ -30,6 +30,7 @@ const WORKFLOW_LABEL: &str = " [workflow]";
 const RESTRICTED_LABEL: &str = " [restricted]";
 const YOLO_LABEL: &str = " [yolo]";
 const YOLO_DIM_FACTOR: f32 = 0.15;
+const EDITOR_OPEN_TEXT: &str = " editing in $EDITOR";
 
 pub struct UsageStats {
     /// The whole session's bill, drawn next to the focused chat's own once
@@ -64,6 +65,7 @@ pub struct StatusBarContext<'a> {
     pub model_id: &'a str,
     pub stats: UsageStats,
     pub auto_scroll: bool,
+    pub editor_open: bool,
     pub chat_name: Option<&'a str>,
     pub thinking_label: Option<Cow<'static, str>>,
     pub fast: bool,
@@ -207,6 +209,10 @@ impl StatusBar {
                 " auto-scroll paused",
                 theme::current().status_dim,
             ));
+        }
+
+        if ctx.editor_open {
+            left_spans.push(Span::styled(EDITOR_OPEN_TEXT, theme::current().status_notice));
         }
 
         if let Some(retry) = ctx.motion.retry {
@@ -529,6 +535,7 @@ mod tests {
                 show_global,
             },
             auto_scroll: true,
+            editor_open: false,
             chat_name: None,
             thinking_label: None,
             fast: false,
@@ -548,6 +555,15 @@ mod tests {
         ctx.restricted = restricted;
 
         draw(&ctx).contains(RESTRICTED_LABEL.trim())
+    }
+
+    #[test_case(true  => true  ; "an_open_detached_editor_shows_in_the_bar")]
+    #[test_case(false => false ; "no_draft_keeps_the_bar_quiet")]
+    fn the_bar_advertises_the_open_detached_editor(editor_open: bool) -> bool {
+        let mut ctx = context(&Status::Idle, None, false, false);
+        ctx.editor_open = editor_open;
+
+        draw(&ctx).contains(EDITOR_OPEN_TEXT.trim())
     }
 
     /// The sigma is the whole session's bill, and only the session can hand it
