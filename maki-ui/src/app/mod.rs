@@ -2188,13 +2188,9 @@ impl App {
         if key::EDIT_INPUT.matches(key) {
             return self.run_builtin(BuiltinAction::EditInput);
         }
-        // Legacy terminals report Alt+Shift+O as 'O' + ALT without a shift
-        // bit; kitty-protocol ones add it. Both are this key, and neither can
-        // collide with Alt+O, which arrives lowercase.
-        if key::EDIT_INPUT_DETACHED.code == key.code
-            && key.modifiers.intersects(KeyModifiers::ALT)
-            && !key.modifiers.intersects(KeyModifiers::CONTROL)
-        {
+        // Only terminals that speak the kitty protocol report this pair; elsewhere
+        // it arrives as Ctrl+O, which is the plan editor.
+        if key::EDIT_INPUT_DETACHED.matches(key) {
             return self.run_builtin(BuiltinAction::EditInputDetached);
         }
         if key::MODEL_PICKER.matches(key) {

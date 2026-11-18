@@ -93,11 +93,9 @@ pub mod key {
         label: "Alt+O",
     };
     pub const EDIT_INPUT_DETACHED: Bind = Bind {
-        code: KeyCode::Char('O'),
-        modifiers: KeyModifiers::from_bits_truncate(
-            KeyModifiers::ALT.bits() | KeyModifiers::SHIFT.bits(),
-        ),
-        label: "Alt+Shift+O",
+        code: KeyCode::Char('o'),
+        modifiers: KeyModifiers::CONTROL.union(KeyModifiers::ALT),
+        label: mod_key!("Alt+O"),
     };
     pub const UNDO: Bind = Bind {
         code: KeyCode::Char('z'),

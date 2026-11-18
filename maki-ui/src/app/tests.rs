@@ -6073,22 +6073,24 @@ fn alt_o_opens_editor_for_input() {
     assert!(matches!(&actions[..], [Action::EditInputInEditor]));
 }
 
-#[test_case(KeyModifiers::ALT | KeyModifiers::SHIFT ; "kitty_reports_the_shift_bit")]
-#[test_case(KeyModifiers::ALT ; "legacy_terminals_omit_the_shift_bit")]
-fn alt_shift_o_opens_detached_editor(modifiers: KeyModifiers) {
+#[test]
+fn ctrl_alt_o_opens_detached_editor() {
     let mut app = test_app();
     app.input_box.buffer.insert_text("hello");
-    let actions = app.update(Msg::Key(KeyEvent::new(KeyCode::Char('O'), modifiers)));
+    let actions = app.update(Msg::Key(kb::EDIT_INPUT_DETACHED.to_key_event()));
     assert!(matches!(&actions[..], [Action::EditInputDetached]));
 }
 
-#[test]
-fn alt_shift_ctrl_o_does_not_open_detached_editor() {
+#[test_case(KeyCode::Char('O'), KeyModifiers::ALT | KeyModifiers::SHIFT ; "alt_shift_o_is_unbound")]
+#[test_case(KeyCode::Char('o'), KeyModifiers::CONTROL ; "ctrl_o_stays_the_plan_editor")]
+fn keys_that_are_not_the_detached_editor(code: KeyCode, modifiers: KeyModifiers) {
     let mut app = test_app();
     app.input_box.buffer.insert_text("hello");
-    let key = KeyEvent::new(KeyCode::Char('O'), KeyModifiers::ALT | KeyModifiers::CONTROL);
-    let actions = app.update(Msg::Key(key));
-    assert!(!actions.iter().any(|a| matches!(a, Action::EditInputDetached)));
+    let actions = app.update(Msg::Key(KeyEvent::new(code, modifiers)));
+    assert!(
+        !actions.iter().any(|a| matches!(a, Action::EditInputDetached)),
+        "detached editor fired from an unbound key",
+    );
 }
 
 fn arm_detached_draft(app: &mut App) {
@@ -6137,7 +6139,7 @@ fn draft_blocks_opening_another_editor() {
     let mut app = test_app();
     app.input_box.buffer.insert_text("hello");
     arm_detached_draft(&mut app);
-    let key = KeyEvent::new(KeyCode::Char('O'), KeyModifiers::ALT | KeyModifiers::SHIFT);
+    let key = kb::EDIT_INPUT_DETACHED.to_key_event();
     let actions = app.update(Msg::Key(key));
     assert!(actions
         .iter()
